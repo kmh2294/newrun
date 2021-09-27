@@ -5,7 +5,7 @@ const { CLIENT_ID, REDIRECT_URI } = require("../config/Oatuh");
 const kakao_get_token_url = "https://kauth.kakao.com/oauth/token";
 const { User } = require("../models/User");
 
-const getKaKaoInfo = (at) => {
+const getKaKaoInfo = (at, res) => {
     const options = {
         uri: "https://kapi.kakao.com/v2/user/me",
         method: "POST",
@@ -14,7 +14,7 @@ const getKaKaoInfo = (at) => {
         },
     };
     request.post(options, function (error, response, body) {
-        let data = JSON.parse(body);
+        const KAKAO_API_DATA = JSON.parse(body);
         // {
         //        id: 1919811222,
         //        connected_at: '2021-09-22T05:33:36Z',
@@ -34,22 +34,26 @@ const getKaKaoInfo = (at) => {
         //          }
         //        }
         //      }
-        User.findOne({ Oauth_id: data.id }, (err, user) => {
-            if (!user)
-                return res.json({
-                    loginSuccess: false,
-                    message: "Auth failed, email not found",
-                });
-            else {
-                user.generateToken((err, user) => {
-                    if (err) return res.status(400).send(err);
-                    res.cookie("w_authExp", user.tokenExp);
-                    res.cookie("w_auth", user.token).status(200).json({
-                        loginSuccess: true,
-                        userId: user._id,
-                    });
-                });
+        console.log(KAKAO_API_DATA);
+        User.findOne({ Oauth_id: KAKAO_API_DATA.id }, async (err, user) => {
+            if (!user) {
+                console.log("없어서 만듬");
+                // 디비 생성
+                user = await new User({
+                    name: KAKAO_API_DATA.properties.nickname,
+                    Oauth_id: KAKAO_API_DATA.id,
+                    thumbnail_image: KAKAO_API_DATA.properties.thumbnail_image,
+                }).save();
             }
+
+            user.generateToken((err, user) => {
+                if (err) return res.status(400).send(err);
+                res.cookie("w_authExp", user.tokenExp);
+                res.cookie("w_auth", user.token).status(200).json({
+                    loginSuccess: true,
+                    user: user,
+                });
+            });
         });
     });
 };
@@ -67,7 +71,7 @@ router.post("/kakaoSignUp", (req, res) => {
     };
     request.post(options, function (error, response, body) {
         let data = JSON.parse(body);
-        getKaKaoInfo(data.access_token);
+        getKaKaoInfo(data.access_token, res);
     });
 });
 
